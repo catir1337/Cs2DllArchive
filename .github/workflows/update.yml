@@ -21,7 +21,7 @@ jobs:
             -filelist scripts/filelist.txt \
             -dir tmp_download \
             -os windows \
-            -username anonymous
+
 
       - name: Check if changed and commit
         run: |
