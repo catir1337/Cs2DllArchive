@@ -1,0 +1,55 @@
+name: Track CS2 update
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  check-and-update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup DepotDownloader
+        run: |
+          curl -L -o dd.zip https://github.com/SteamRE/DepotDownloader/releases/latest/download/DepotDownloader-linux-x64.zip
+          unzip -o dd.zip -d depotdownloader
+          chmod +x depotdownloader/DepotDownloader
+
+      - name: Download DLLs
+        run: |
+          rm -rf tmp_download
+          mkdir -p tmp_download
+          ./depotdownloader/DepotDownloader \
+            -app 730 \
+            -filelist scripts/filelist.txt \
+            -dir tmp_download \
+            -os windows \
+            -username anonymous
+
+      - name: Check if changed and commit
+        run: |
+          DATE=$(date +%Y-%m-%d_%H-%M)
+          OUT="${DATE}_manifest"
+
+          # сравним с последней сохранённой версией (последняя папка по алфавиту/дате)
+          LAST_DIR=$(ls -d */ 2>/dev/null | grep '_manifest' | sort | tail -n 1)
+
+          if [ -n "$LAST_DIR" ] && diff -rq "$LAST_DIR" tmp_download > /dev/null 2>&1; then
+            echo "Изменений нет, выходим"
+            exit 0
+          fi
+
+          mkdir -p "$OUT"
+          cp -r tmp_download/* "$OUT"/
+          rm -rf tmp_download
+
+          git config user.name "cs2-update-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add "$OUT"
+          git commit -m "CS2 update: $OUT"
+          git push
