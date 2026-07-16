@@ -1,3 +1,13 @@
+name: Track CS2 update
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
 jobs:
   check-and-update:
     runs-on: ubuntu-latest
@@ -20,8 +30,7 @@ jobs:
             -app 730 \
             -filelist scripts/filelist.txt \
             -dir tmp_download \
-            -os windows \
-
+            -os windows
 
       - name: Check if changed and commit
         run: |
