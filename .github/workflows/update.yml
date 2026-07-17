@@ -16,6 +16,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Get current buildid
+        id: build
+        run: |
+          BUILDID=$(curl -s "https://api.steamcmd.net/v1/info/730" | jq -r '.data["730"].depots.branches.public.buildid')
+          if [ -z "$BUILDID" ] || [ "$BUILDID" == "null" ]; then
+            echo "Не удалось получить buildid, используем timestamp" >&2
+            BUILDID="unknown_$(date +%s)"
+          fi
+          echo "buildid=$BUILDID" >> "$GITHUB_OUTPUT"
+
       - name: Setup DepotDownloader
         run: |
           curl -L -o dd.zip https://github.com/SteamRE/DepotDownloader/releases/latest/download/DepotDownloader-linux-x64.zip
@@ -34,16 +44,37 @@ jobs:
 
       - name: Check if changed and commit
         run: |
-          DATE=$(date +%Y-%m-%d_%H-%M)
-          OUT="${DATE}_manifest"
-          LAST_DIR=$(ls -d */ 2>/dev/null | grep '_manifest' | sort | tail -n 1)
-          if [ -n "$LAST_DIR" ] && diff -rq "$LAST_DIR" tmp_download > /dev/null 2>&1; then
+          DATE=$(date +%Y-%m-%d)
+          BUILDID=${{ steps.build.outputs.buildid }}
+          OUT="${DATE}_${BUILDID}"
+
+          HASH_NEW=$(find tmp_download -type f -iname '*.dll' | sort | xargs sha256sum | sha256sum | cut -d' ' -f1)
+
+          LAST_DIR=$(ls -d */ 2>/dev/null | grep -E '_[0-9]+/$|_manifest/$|_update/$' | sort | tail -n 1)
+
+          if [ -n "$LAST_DIR" ]; then
+            HASH_OLD=$(find "$LAST_DIR" -type f -iname '*.dll' 2>/dev/null | sort | xargs sha256sum 2>/dev/null | sha256sum | cut -d' ' -f1)
+          else
+            HASH_OLD=""
+          fi
+
+          echo "Новый хеш: $HASH_NEW"
+          echo "Старый хеш: $HASH_OLD"
+
+          if [ "$HASH_NEW" == "$HASH_OLD" ]; then
             echo "Изменений нет, выходим"
             exit 0
           fi
+
+          if [ -d "$OUT" ]; then
+            echo "Папка $OUT уже существует, пропускаем (дубликат)"
+            exit 0
+          fi
+
           mkdir -p "$OUT"
           cp -r tmp_download/* "$OUT"/
           rm -rf tmp_download
+
           git config user.name "cs2-update-bot"
           git config user.email "bot@users.noreply.github.com"
           git add "$OUT"
